@@ -1,0 +1,104 @@
+name: CI yumi-armhf
+
+on:
+  push:
+    branches:
+      - yumi-armhf
+  pull_request:
+    branches:
+      - yumi-armhf
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'Package to test (default: openbor)'
+        required: false
+        default: 'openbor'
+
+concurrency:
+  group: ci-yumi-armhf-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    name: Build test — ${{ github.event.inputs.package || 'openbor' }} (armhf / Debian Bookworm)
+
+    steps:
+      - name: Checkout yumi-armhf
+        uses: actions/checkout@v4
+        with:
+          ref: yumi-armhf
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm
+
+      - name: Build package in armhf container
+        run: |
+          PACKAGE="${{ github.event.inputs.package || 'openbor' }}"
+          echo "Testing package: ${PACKAGE}"
+
+          docker run --rm \
+            --platform linux/arm/v7 \
+            -v "${{ github.workspace }}:/retropie-setup" \
+            -v "/tmp/output:/output" \
+            debian:bookworm \
+            bash -c "
+              set -e
+
+              echo '=== System info ==='
+              uname -m
+              cat /etc/os-release | grep PRETTY
+
+              echo '=== Installing build dependencies ==='
+              apt-get update -qq
+              apt-get install -y --no-install-recommends \
+                git curl wget ca-certificates sudo dialog \
+                build-essential cmake pkg-config \
+                libsdl2-dev libogg-dev libvorbis-dev libpng-dev zlib1g-dev \
+                xmlstarlet python3 2>&1 | tail -5
+
+              echo '=== Creating pi user ==='
+              id -u pi &>/dev/null || useradd -m -s /bin/bash pi
+              echo 'pi ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+
+              echo '=== Linking RetroPie-Setup ==='
+              cp -r /retropie-setup /home/pi/RetroPie-Setup
+              chown -R pi:pi /home/pi/RetroPie-Setup
+
+              export __platform='armv7-mali'
+              export __user='pi'
+
+              cd /home/pi/RetroPie-Setup
+
+              echo '=== Running: ${PACKAGE} ==='
+              if bash retropie_packages.sh '${PACKAGE}' 2>&1 | tee /output/build.log; then
+                echo 'BUILD SUCCESS'
+              else
+                echo 'BUILD FAILED'
+                exit 1
+              fi
+
+              echo '=== Artifacts ==='
+              find /opt/retropie -type f | head -30
+              du -sh /opt/retropie || true
+
+              echo '=== Packaging output ==='
+              tar -czf /output/packages-${PACKAGE}-armhf.tar.gz -C / opt/retropie/ 2>/dev/null || true
+              ls -lh /output/
+            "
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ github.event.inputs.package || 'openbor' }}
+          path: /tmp/output/build.log
+
+      - name: Upload package artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ github.event.inputs.package || 'openbor' }}-armhf.tar.gz
+          path: /tmp/output/packages-${{ github.event.inputs.package || 'openbor' }}-armhf.tar.gz
