@@ -80,12 +80,23 @@ jobs:
               find /opt/retropie -type f | head -20
               du -sh /opt/retropie 2>/dev/null || echo "nothing installed"
 
+              echo "=== Packaging ==="
+              tar -czf "/output/packages-'"${PACKAGE}"'-'"${DEBIAN}"'-armhf.tar.gz" -C / opt/retropie/ 2>/dev/null || true
+              ls -lh /output/
+
               echo "=== Done ==="
             ' 2>&1 | tee /tmp/output/run-${DEBIAN}.log || true
 
-      - name: Upload install log
+      - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: retropie-log-${{ matrix.debian }}-${{ github.event.inputs.package || 'openbor' }}
+          name: build-log-${{ matrix.debian }}-${{ github.event.inputs.package || 'openbor' }}
           path: /tmp/output/install-${{ matrix.debian }}.log
+
+      - name: Upload package artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ github.event.inputs.package || 'openbor' }}-${{ matrix.debian }}-armhf
+          path: /tmp/output/packages-${{ github.event.inputs.package || 'openbor' }}-${{ matrix.debian }}-armhf.tar.gz
