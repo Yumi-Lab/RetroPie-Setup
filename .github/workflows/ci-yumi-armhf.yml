@@ -44,6 +44,10 @@ jobs:
               uname -m
               grep PRETTY_NAME /etc/os-release
 
+              echo "=== Installing bootstrap dependencies ==="
+              apt-get update -qq
+              apt-get install -y --no-install-recommends curl ca-certificates sudo
+
               echo "=== Running YUMI-RETROPIE install.sh ==="
               curl -fsSL https://raw.githubusercontent.com/Yumi-Lab/YUMI-RETROPIE/main/install.sh | bash 2>&1 | tee /output/install-'"${DEBIAN}"'.log
 
