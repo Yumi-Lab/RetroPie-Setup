@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   build-test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, yumi-lab]
     name: Build test — ${{ github.event.inputs.package || 'openbor' }} (armhf / Debian Bookworm)
 
     steps:
@@ -38,18 +38,19 @@ jobs:
         run: |
           PACKAGE="${{ github.event.inputs.package || 'openbor' }}"
           echo "Testing package: ${PACKAGE}"
+          mkdir -p /tmp/output-$$
 
           docker run --rm \
             --platform linux/arm/v7 \
-            -v "${{ github.workspace }}:/retropie-setup" \
-            -v "/tmp/output:/output" \
+            -v "${{ github.workspace }}:/retropie-setup:ro" \
+            -v "/tmp/output-$$:/output" \
             debian:bookworm \
             bash -c "
               set -e
 
               echo '=== System info ==='
               uname -m
-              cat /etc/os-release | grep PRETTY
+              cat /etc/os-release | grep PRETTY_NAME
 
               echo '=== Installing build dependencies ==='
               apt-get update -qq
@@ -63,7 +64,7 @@ jobs:
               id -u pi &>/dev/null || useradd -m -s /bin/bash pi
               echo 'pi ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 
-              echo '=== Linking RetroPie-Setup ==='
+              echo '=== Copying RetroPie-Setup (yumi-armhf) ==='
               cp -r /retropie-setup /home/pi/RetroPie-Setup
               chown -R pi:pi /home/pi/RetroPie-Setup
 
@@ -72,33 +73,33 @@ jobs:
 
               cd /home/pi/RetroPie-Setup
 
-              echo '=== Running: ${PACKAGE} ==='
-              if bash retropie_packages.sh '${PACKAGE}' 2>&1 | tee /output/build.log; then
-                echo 'BUILD SUCCESS'
-              else
-                echo 'BUILD FAILED'
-                exit 1
-              fi
+              echo '=== Building: ${PACKAGE} ==='
+              bash retropie_packages.sh '${PACKAGE}' 2>&1 | tee /output/build.log
 
-              echo '=== Artifacts ==='
+              echo '=== Result ==='
               find /opt/retropie -type f | head -30
               du -sh /opt/retropie || true
 
-              echo '=== Packaging output ==='
               tar -czf /output/packages-${PACKAGE}-armhf.tar.gz -C / opt/retropie/ 2>/dev/null || true
               ls -lh /output/
             "
+
+          echo "OUTPUT_DIR=/tmp/output-$$" >> $GITHUB_ENV
 
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-log-${{ github.event.inputs.package || 'openbor' }}
-          path: /tmp/output/build.log
+          path: ${{ env.OUTPUT_DIR }}/build.log
 
       - name: Upload package artifact
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: packages-${{ github.event.inputs.package || 'openbor' }}-armhf.tar.gz
-          path: /tmp/output/packages-${{ github.event.inputs.package || 'openbor' }}-armhf.tar.gz
+          path: ${{ env.OUTPUT_DIR }}/packages-${{ github.event.inputs.package || 'openbor' }}-armhf.tar.gz
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf ${{ env.OUTPUT_DIR }}
