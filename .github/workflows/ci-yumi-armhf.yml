@@ -1,4 +1,4 @@
-name: CI — install.sh simulation
+name: CI — yumi-armhf RetroPie-Setup
 
 on:
   push:
@@ -8,19 +8,24 @@ on:
     branches:
       - yumi-armhf
   workflow_dispatch:
+    inputs:
+      package:
+        description: 'Package to install (default: openbor)'
+        required: false
+        default: 'openbor'
 
 concurrency:
   group: ci-yumi-armhf-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  install-simulation:
+  retropie-setup:
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         debian: [bookworm, trixie]
-    name: install.sh — debian:${{ matrix.debian }}
+    name: retropie_setup — debian:${{ matrix.debian }}
 
     steps:
       - name: Set up QEMU
@@ -28,9 +33,10 @@ jobs:
         with:
           platforms: arm
 
-      - name: Simulate install.sh on debian:${{ matrix.debian }} (armhf)
+      - name: Run retropie_packages.sh on debian:${{ matrix.debian }} (armhf)
         run: |
           DEBIAN="${{ matrix.debian }}"
+          PACKAGE="${{ github.event.inputs.package || 'openbor' }}"
           mkdir -p /tmp/output
 
           docker run --rm \
@@ -46,29 +52,33 @@ jobs:
 
               echo "=== Installing bootstrap dependencies ==="
               apt-get update -qq
-              apt-get install -y --no-install-recommends curl ca-certificates sudo
+              apt-get install -y --no-install-recommends \
+                git curl ca-certificates sudo dialog \
+                build-essential cmake pkg-config \
+                libsdl2-dev libogg-dev libvorbis-dev libpng-dev zlib1g-dev \
+                xmlstarlet python3 2>&1 | tail -5
 
-              echo "=== Running YUMI-RETROPIE install.sh ==="
-              curl -fsSL https://raw.githubusercontent.com/Yumi-Lab/YUMI-RETROPIE/main/install.sh | bash 2>&1 | tee /output/install-'"${DEBIAN}"'.log
+              id -u pi &>/dev/null || useradd -m -s /bin/bash pi
+              echo "pi ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+              echo "=== Cloning Yumi-Lab/RetroPie-Setup (yumi-armhf) ==="
+              git clone --depth=1 -b yumi-armhf \
+                https://github.com/Yumi-Lab/RetroPie-Setup.git \
+                /home/pi/RetroPie-Setup
+              chown -R pi:pi /home/pi/RetroPie-Setup
+
+              export __platform="armv7-mali"
+              export __user="pi"
+
+              cd /home/pi/RetroPie-Setup
+
+              echo "=== Installing: '"${PACKAGE}"' ==="
+              bash retropie_packages.sh "'"${PACKAGE}"'" 2>&1 | tee /output/install-'"${DEBIAN}"'.log
 
               echo "=== Validation ==="
-              echo "--- EmulationStation binary ---"
-              ls -lh /opt/retropie/supplementary/emulationstation/emulationstation || echo "MISSING"
-
-              echo "--- RetroArch binary ---"
-              ls -lh /opt/retropie/emulators/retroarch/bin/retroarch || echo "MISSING"
-
-              echo "--- libretro cores count ---"
-              find /opt/retropie/libretrocores -name "*.so" 2>/dev/null | wc -l
-
-              echo "--- ROM directories ---"
-              ls /home/pi/RetroPie/roms/ | head -20
-
-              echo "--- es_systems.cfg ---"
-              [ -f /etc/emulationstation/es_systems.cfg ] && echo "OK" || echo "MISSING"
-
-              echo "--- OpenBOR ---"
-              ls /opt/retropie/ports/openbor/ 2>/dev/null || echo "not installed"
+              echo "--- Installed files ---"
+              find /opt/retropie -type f | head -20
+              du -sh /opt/retropie 2>/dev/null || echo "nothing installed"
 
               echo "=== Done ==="
             ' 2>&1 | tee /tmp/output/run-${DEBIAN}.log || true
@@ -77,5 +87,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: install-log-${{ matrix.debian }}
+          name: retropie-log-${{ matrix.debian }}-${{ github.event.inputs.package || 'openbor' }}
           path: /tmp/output/install-${{ matrix.debian }}.log
