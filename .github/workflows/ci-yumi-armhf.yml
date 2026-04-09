@@ -46,17 +46,18 @@ jobs:
             https://github.com/Yumi-Lab/RetroPie-Setup.git \
             /tmp/retropie-ci/RetroPie-Setup
 
-      - name: "User step 2 — retropie_packages.sh ${{ github.event.inputs.package || 'openbor' }}"
+      - name: "User step 2 — sudo bash retropie_packages.sh ${{ github.event.inputs.package || 'openbor' }}"
         env:
           PACKAGE: ${{ github.event.inputs.package || 'openbor' }}
         run: |
           cd /tmp/retropie-ci/RetroPie-Setup
 
-          # Only __platform is forced (QEMU cpuinfo workaround on real H3 not needed,
-          # but kept for consistency with RetroMi-packages builds)
-          export __platform="armv7-mali"
+          # 100% vanilla — no __platform override.
+          # On real H3, /proc/cpuinfo shows "Allwinner sun8i Family"
+          # → get_platform() auto-detects __platform="armv7-mali"
+          # In chroot/QEMU, __platform MUST be forced externally (build-group.sh handles it).
 
-          sudo -E bash retropie_packages.sh "${PACKAGE}" \
+          sudo bash retropie_packages.sh "${PACKAGE}" \
             2>&1 | tee /tmp/retropie-ci/output/build.log
 
       - name: Validate install
