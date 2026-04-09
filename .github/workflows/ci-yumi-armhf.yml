@@ -8,26 +8,17 @@ on:
     branches:
       - yumi-armhf
   workflow_dispatch:
-    inputs:
-      package:
-        description: 'Package to build (default: openbor)'
-        required: false
-        default: 'openbor'
 
 concurrency:
   group: ci-yumi-armhf-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # ── Job 1: Docker QEMU armhf — Bookworm + Trixie — serveur USA ──
-  build-qemu:
+  # ── Job 1: Docker QEMU armhf — Trixie — serveur USA ─────────────
+  build-qemu-trixie:
     runs-on: yumi-lab
-    timeout-minutes: 360
-    strategy:
-      fail-fast: false
-      matrix:
-        distro: [bookworm, trixie]
-    name: qemu — ${{ github.event.inputs.package || 'openbor' }} (armhf / ${{ matrix.distro }})
+    timeout-minutes: 14400
+    name: qemu — RetroPie full (armhf / trixie)
 
     steps:
       - name: Checkout repository
@@ -36,25 +27,20 @@ jobs:
       - name: Ensure QEMU binfmt armhf
         run: |
           docker run --privileged --rm tonistiigi/binfmt --install arm
-          docker run --platform linux/arm/v7 --rm debian:${{ matrix.distro }} uname -m
+          docker run --platform linux/arm/v7 --rm debian:trixie uname -m
 
-      - name: Build ${{ github.event.inputs.package || 'openbor' }} on Debian ${{ matrix.distro }}
-        env:
-          PACKAGE: ${{ github.event.inputs.package || 'openbor' }}
-          DISTRO: ${{ matrix.distro }}
+      - name: Build RetroPie full install on Debian Trixie
         run: |
           mkdir -p output
 
           docker run --platform linux/arm/v7 --rm \
-            -e PACKAGE="${PACKAGE}" \
-            -e DISTRO="${DISTRO}" \
             -v "${{ github.workspace }}:/repo:ro" \
             -v "${{ github.workspace }}/output:/output" \
-            debian:${DISTRO} /bin/bash -c '
+            debian:trixie /bin/bash -c '
               set -e
 
               echo "================================================================"
-              echo " RetroPie-Setup | pkg: ${PACKAGE} | arch: $(uname -m) | distro: ${DISTRO}"
+              echo " RetroPie-Setup | basic_install | arch: $(uname -m) | distro: trixie"
               echo "================================================================"
 
               apt-get update -qq
@@ -66,12 +52,10 @@ jobs:
                 libusb-1.0-0-dev libavformat-dev libavdevice-dev \
                 xmlstarlet joystick python3 lsb-release
 
-              # Trixie (Debian 13) — additional -dev packages if available
-              if [ "${DISTRO}" = "trixie" ]; then
-                apt-get install -y --no-install-recommends \
-                  libsdl2-gfx-dev libsdl2-mixer-dev libsdl2-net-dev \
-                  libsdl2-ttf-dev libsdl2-image-dev 2>/dev/null || true
-              fi
+              # Trixie (Debian 13) — additional -dev packages
+              apt-get install -y --no-install-recommends \
+                libsdl2-gfx-dev libsdl2-mixer-dev libsdl2-net-dev \
+                libsdl2-ttf-dev libsdl2-image-dev 2>/dev/null || true
 
               # RetroPie expects a pi user
               id -u pi &>/dev/null || useradd -m -s /bin/bash pi
@@ -87,49 +71,49 @@ jobs:
               # Without this, RetroPie falls back to -march=native (x86 host instructions)
               export __platform="armv7-mali"
 
-              echo "=== Building ${PACKAGE} with __platform=${__platform} ==="
-              __user=pi bash retropie_packages.sh "${PACKAGE}" \
-                2>&1 | tee /output/build-${DISTRO}.log
+              echo "=== RetroPie basic_install with __platform=${__platform} ==="
+              __user=pi bash retropie_packages.sh setup basic_install \
+                2>&1 | tee /output/build-trixie.log
 
               if [ ! -d /opt/retropie ]; then
                 echo "ERROR: /opt/retropie not found — build failed"
                 exit 1
               fi
 
-              echo "=== Installed files ==="
-              find /opt/retropie -type f | head -30
+              echo "=== Installed modules ==="
+              ls -la /opt/retropie/
               du -sh /opt/retropie
 
-              tar -czf "/output/packages-${PACKAGE}-armhf-${DISTRO}.tar.gz" \
+              tar -czf "/output/retropie-full-armhf-trixie.tar.gz" \
                 -C / opt/retropie/
 
-              echo "=== Done: ${PACKAGE} on Debian ${DISTRO} ==="
+              echo "=== Done: RetroPie full on Debian Trixie ==="
             '
 
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log-${{ github.event.inputs.package || 'openbor' }}-${{ matrix.distro }}
-          path: output/build-${{ matrix.distro }}.log
+          name: build-log-full-trixie
+          path: output/build-trixie.log
 
       - name: Upload package
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: packages-${{ github.event.inputs.package || 'openbor' }}-armhf-${{ matrix.distro }}
-          path: output/packages-*-armhf-${{ matrix.distro }}.tar.gz
+          name: retropie-full-armhf-trixie
+          path: output/retropie-full-armhf-trixie.tar.gz
 
   # ── Job 2: Natif ARM — SmartPi FR (H3 hardware) ──────────────────
   build-native:
     runs-on: [self-hosted, Linux, ARM, yumi-fr]
-    name: native — ${{ github.event.inputs.package || 'openbor' }} (armhf H3)
-    timeout-minutes: 120
+    name: native — RetroPie full (armhf H3)
+    timeout-minutes: 14400
 
     steps:
       - name: System info
         run: |
-          echo "=== Native ARM build — vanilla user install test ==="
+          echo "=== Native ARM build — RetroPie full install ==="
           uname -m
           grep PRETTY_NAME /etc/os-release
           nproc
@@ -141,15 +125,13 @@ jobs:
           mkdir -p /tmp/retropie-ci/output
           sudo rm -rf /opt/retropie
 
-      - name: "User step 1 — git clone"
+      - name: "git clone yumi-armhf"
         run: |
           git clone --depth=1 -b yumi-armhf \
             https://github.com/Yumi-Lab/RetroPie-Setup.git \
             /tmp/retropie-ci/RetroPie-Setup
 
-      - name: "User step 2 — sudo bash retropie_packages.sh ${{ github.event.inputs.package || 'openbor' }}"
-        env:
-          PACKAGE: ${{ github.event.inputs.package || 'openbor' }}
+      - name: "RetroPie basic_install (full — core + main)"
         run: |
           cd /tmp/retropie-ci/RetroPie-Setup
 
@@ -157,15 +139,13 @@ jobs:
           # On real H3, /proc/cpuinfo shows "Allwinner sun8i Family"
           # -> get_platform() auto-detects __platform="armv7-mali"
 
-          sudo bash retropie_packages.sh "${PACKAGE}" \
+          sudo bash retropie_packages.sh setup basic_install \
             2>&1 | tee /tmp/retropie-ci/output/build.log
 
       - name: Validate install
-        env:
-          PACKAGE: ${{ github.event.inputs.package || 'openbor' }}
         run: |
-          echo "=== Installed files ==="
-          find /opt/retropie -type f 2>/dev/null | head -30
+          echo "=== Installed modules ==="
+          ls -la /opt/retropie/ 2>/dev/null || true
           du -sh /opt/retropie 2>/dev/null || true
 
           if [ ! -d /opt/retropie ]; then
@@ -173,7 +153,7 @@ jobs:
             exit 1
           fi
 
-          tar -czf "/tmp/retropie-ci/output/packages-${PACKAGE}-armhf-native.tar.gz" \
+          tar -czf "/tmp/retropie-ci/output/retropie-full-armhf-native.tar.gz" \
             -C / opt/retropie/
           ls -lh /tmp/retropie-ci/output/*.tar.gz
 
@@ -187,12 +167,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log-${{ github.event.inputs.package || 'openbor' }}-native
+          name: build-log-full-native
           path: /tmp/retropie-ci/output/build.log
 
       - name: Upload package
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: packages-${{ github.event.inputs.package || 'openbor' }}-armhf-native
-          path: /tmp/retropie-ci/output/packages-*.tar.gz
+          name: retropie-full-armhf-native
+          path: /tmp/retropie-ci/output/retropie-full-armhf-native.tar.gz
