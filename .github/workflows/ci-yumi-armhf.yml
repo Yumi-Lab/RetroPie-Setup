@@ -33,7 +33,7 @@ jobs:
         with:
           platforms: arm
 
-      - name: Run retropie_packages.sh on debian:${{ matrix.debian }} (armhf)
+      - name: Build ${{ github.event.inputs.package || 'openbor' }} on debian:${{ matrix.debian }} (armhf)
         run: |
           DEBIAN="${{ matrix.debian }}"
           PACKAGE="${{ github.event.inputs.package || 'openbor' }}"
@@ -48,15 +48,26 @@ jobs:
 
               echo "=== System info ==="
               uname -m
-              grep PRETTY_NAME /etc/os-release
+              cat /etc/os-release | grep PRETTY_NAME
 
-              echo "=== Installing bootstrap dependencies ==="
+              echo "=== Installing dependencies ==="
+              # Pre-install ALL dependencies so retropie_packages.sh does not need
+              # to run slow apt operations inside QEMU.
+              # — RetroPie core (get_retropie_depends): git gpg subversion dialog
+              #   curl gcc g++ build-essential unzip xmlstarlet python3-pyudev
+              #   ca-certificates dirmngr
+              # — OS detection (get_os_version): lsb-release
+              # — openbor (depends_openbor): cmake libsdl2-dev libogg-dev
+              #   libvorbis-dev libpng-dev zlib1g-dev
               apt-get update -qq
               apt-get install -y --no-install-recommends \
-                git curl ca-certificates sudo dialog \
+                git curl wget ca-certificates sudo dialog \
                 build-essential cmake pkg-config \
+                gpg subversion unzip dirmngr lsb-release \
+                python3 python3-pyudev \
+                xmlstarlet \
                 libsdl2-dev libogg-dev libvorbis-dev libpng-dev zlib1g-dev \
-                xmlstarlet python3 2>&1 | tail -5
+                2>&1 | tail -20
 
               id -u pi &>/dev/null || useradd -m -s /bin/bash pi
               echo "pi ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
@@ -73,26 +84,34 @@ jobs:
               cd /home/pi/RetroPie-Setup
 
               echo "=== Installing: '"${PACKAGE}"' ==="
-              bash retropie_packages.sh "'"${PACKAGE}"'" 2>&1 | tee /output/install-'"${DEBIAN}"'.log
+              bash retropie_packages.sh "'"${PACKAGE}"'" _source_ 2>&1 | tee /output/install-'"${DEBIAN}"'.log
 
               echo "=== Validation ==="
               echo "--- Installed files ---"
-              find /opt/retropie -type f | head -20
-              du -sh /opt/retropie 2>/dev/null || echo "nothing installed"
+              find /opt/retropie -type f 2>/dev/null | head -30
+              du -sh /opt/retropie 2>/dev/null || echo "WARNING: nothing installed in /opt/retropie"
 
               echo "=== Packaging ==="
-              tar -czf "/output/packages-'"${PACKAGE}"'-'"${DEBIAN}"'-armhf.tar.gz" -C / opt/retropie/ 2>/dev/null || true
-              ls -lh /output/
+              if [ -d /opt/retropie ]; then
+                tar -czf "/output/packages-'"${PACKAGE}"'-'"${DEBIAN}"'-armhf.tar.gz" -C / opt/retropie/
+                echo "Package created:"
+                ls -lh /output/*.tar.gz
+              else
+                echo "ERROR: /opt/retropie not found — build failed"
+                exit 1
+              fi
 
               echo "=== Done ==="
-            ' 2>&1 | tee /tmp/output/run-${DEBIAN}.log || true
+            ' 2>&1 | tee /tmp/output/run-${DEBIAN}.log
 
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-log-${{ matrix.debian }}-${{ github.event.inputs.package || 'openbor' }}
-          path: /tmp/output/install-${{ matrix.debian }}.log
+          path: |
+            /tmp/output/install-${{ matrix.debian }}.log
+            /tmp/output/run-${{ matrix.debian }}.log
 
       - name: Upload package artifact
         if: success()
