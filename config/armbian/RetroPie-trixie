@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2034
+
+# Base image: SmartPi One — Armbian Trixie (Debian 13) server
+DOWNLOAD_URL_CHECKSUM="https://github.com/Yumi-Lab/SmartPi-armbian/releases/download/v1.6.0/Yumi-smartpi1-trixie-debian13-server-2026-03-01-2139.img.xz.sha256"
+DOWNLOAD_URL_IMAGE="https://github.com/Yumi-Lab/SmartPi-armbian/releases/download/v1.6.0/Yumi-smartpi1-trixie-debian13-server-2026-03-01-2139.img.xz"
+
+# Extra space needed: RetroPie full basic_install from source
+BASE_IMAGE_ENLARGEROOT=12000
+
+# SmartPi One — AllWinner H3 — ARMv7 32-bit
+BASE_ARCH="armhf"
+BASE_SBC="smartpi1"
+BASE_OS_CODENAME="trixie"
+BASE_OS_VERSION="debian13"
+
+# export Variables
+export BASE_ARCH
+export BASE_SBC
+export BASE_OS_CODENAME
+export BASE_OS_VERSION
+export DOWNLOAD_URL_CHECKSUM
+export DOWNLOAD_URL_IMAGE

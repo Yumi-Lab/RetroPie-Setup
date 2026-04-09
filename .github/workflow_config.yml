@@ -1,0 +1,9 @@
+#### Configure workflow matrix — RetroPie-Setup vanilla images
+
+buildtest:
+  - armbian/RetroPie-bookworm
+  - armbian/RetroPie-trixie
+
+release:
+  - armbian/RetroPie-bookworm
+  - armbian/RetroPie-trixie

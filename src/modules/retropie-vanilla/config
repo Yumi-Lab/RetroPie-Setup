@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2034
+
+# RetroPie-Setup repository (cloned in chroot)
+[ -n "${RETROPIE_SETUP_REPO_SHIP}" ]   || RETROPIE_SETUP_REPO_SHIP="https://github.com/Yumi-Lab/RetroPie-Setup.git"
+[ -n "${RETROPIE_SETUP_REPO_BRANCH}" ] || RETROPIE_SETUP_REPO_BRANCH="yumi-armhf"
+
+# Build dependencies for compiling from source
+[ -n "${RETROPIE_VANILLA_DEPS}" ] || RETROPIE_VANILLA_DEPS="git dialog wget lsb-release build-essential cmake pkg-config libsdl2-dev libusb-1.0-0-dev libavformat-dev libavdevice-dev xmlstarlet joystick python3"

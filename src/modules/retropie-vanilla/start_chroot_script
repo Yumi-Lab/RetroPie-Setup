@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+#### RetroPie Vanilla — Compile and install from source via basic_install
+# shellcheck enable=require-variable-braces
+
+set -Ee
+export LC_ALL=C
+export DEBIAN_FRONTEND=noninteractive
+
+# shellcheck disable=SC1091
+source /common.sh
+install_cleanup_trap
+
+echo_green "Installing RetroPie vanilla (basic_install from source)..."
+
+# Build dependencies
+apt-get update
+# shellcheck disable=SC2086
+check_install_pkgs ${RETROPIE_VANILLA_DEPS}
+
+# Clone RetroPie-Setup into the chroot
+pushd "/home/${BASE_USER}" &>/dev/null || exit 1
+gitclone RETROPIE_SETUP_REPO RetroPie-Setup
+popd &>/dev/null || exit 1
+
+cd "/home/${BASE_USER}/RetroPie-Setup"
+
+# CRITICAL: force platform for QEMU builds
+# /proc/cpuinfo in QEMU does NOT show "Allwinner sun8i Family"
+# Without this, RetroPie falls back to -march=native (x86 host instructions)
+export __platform="armv7-mali"
+
+# Force RetroPie-Setup to use the target user
+export __user="${BASE_USER}"
+
+echo_green "Running RetroPie basic_install (all core + main modules)..."
+echo_green "Platform: ${__platform} | User: ${__user} | Arch: $(uname -m)"
+
+# basic_install compiles and installs all core + main packages
+bash retropie_packages.sh setup basic_install
+
+# Verify installation
+if [ ! -d /opt/retropie ]; then
+    echo_green "ERROR: /opt/retropie not found — basic_install failed"
+    exit 1
+fi
+
+echo_green "=== Installed RetroPie modules ==="
+ls -la /opt/retropie/
+du -sh /opt/retropie
+
+# Fix ownership
+chown -R "${BASE_USER}:${BASE_USER}" "/home/${BASE_USER}/RetroPie-Setup"
+chown -R "${BASE_USER}:${BASE_USER}" "/opt/retropie/configs" 2>/dev/null || true
+chown -R "${BASE_USER}:${BASE_USER}" "/home/${BASE_USER}/RetroPie" 2>/dev/null || true
+
+echo_green "Installing RetroPie vanilla (basic_install from source)... [DONE]"
