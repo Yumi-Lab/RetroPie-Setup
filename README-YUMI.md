@@ -37,10 +37,17 @@ yumi-armhf    ← our patches rebased on top of master (3 commits)
 
 ### Commits on this branch (above master)
 
+**Scriptmodule patches:**
 ```
 efca085  fix(openbor): patch linux.cmake to disable OpenGL+WebM for Mali-400
 d8dafb9  feat(openbor): migrate to DCurrent/openbor — SDL2, CMake, no OpenGL
-5d1b4fe  feat(openbor): remove !mali flag — NO_GL=1 makes SDL-only build
+```
+
+**CI/Documentation:**
+```
+7223af8  fix(ci): install curl+ca-certificates before install.sh in Debian minimal image
+c50068a  ci: simulate install.sh on debian bookworm + trixie armhf — user install validation
+a8c3d6a  docs(yumi-armhf): add branch README — patches, update workflow, usage
 ```
 
 ---
@@ -71,6 +78,22 @@ Our 3 commits will cleanly reapply on top of the new master.
 ---
 
 ## Usage
+
+### Direct use on SmartPi One (native armhf)
+
+Clone **this fork** (not the upstream `RetroPie/RetroPie-Setup`) on the SmartPi One:
+
+```bash
+git clone --depth=1 -b yumi-armhf \
+    https://github.com/Yumi-Lab/RetroPie-Setup.git \
+    ~/RetroPie-Setup
+cd ~/RetroPie-Setup
+sudo ./retropie_setup.sh
+```
+
+> **Important:** Do **not** clone from `https://github.com/RetroPie/RetroPie-Setup.git` — the upstream build will fail on Mali-400 (OpenBOR skipped, other packages may error). This fork removes the `!mali` flag and patches `linux.cmake` so builds work on SmartPi One H3.
+
+### Used by RetroMi-packages (QEMU builds)
 
 This branch is cloned automatically by [RetroMi-packages/scripts/build-group.sh](https://github.com/Yumi-Lab/RetroMi-packages/blob/main/scripts/build-group.sh) inside QEMU armhf Docker containers:
 
