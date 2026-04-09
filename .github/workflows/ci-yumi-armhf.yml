@@ -27,47 +27,39 @@ jobs:
     steps:
       - name: System info
         run: |
-          echo "=== Native ARM build ==="
+          echo "=== Native ARM build — vanilla user install test ==="
           uname -m
-          cat /etc/os-release | grep PRETTY_NAME
+          grep PRETTY_NAME /etc/os-release
           nproc
           free -h | head -2
 
-      - name: Install build dependencies
+      - name: Prepare clean environment
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            git curl wget ca-certificates sudo dialog \
-            build-essential cmake pkg-config \
-            gpg subversion unzip dirmngr lsb-release \
-            python3 python3-pyudev xmlstarlet \
-            libsdl2-dev libogg-dev libvorbis-dev libpng-dev zlib1g-dev
-
-      - name: Prepare build environment
-        run: |
-          # Clean previous build if any
           sudo rm -rf /tmp/retropie-ci
           mkdir -p /tmp/retropie-ci/output
+          sudo rm -rf /opt/retropie
 
-          # Clone yumi-armhf branch
+      # Exact same commands a user would run on a SmartPi
+      - name: "User step 1 — git clone"
+        run: |
           git clone --depth=1 -b yumi-armhf \
             https://github.com/Yumi-Lab/RetroPie-Setup.git \
             /tmp/retropie-ci/RetroPie-Setup
 
-      - name: Build ${{ github.event.inputs.package || 'openbor' }}
+      - name: "User step 2 — retropie_packages.sh ${{ github.event.inputs.package || 'openbor' }}"
         env:
           PACKAGE: ${{ github.event.inputs.package || 'openbor' }}
         run: |
           cd /tmp/retropie-ci/RetroPie-Setup
 
+          # Only __platform is forced (QEMU cpuinfo workaround on real H3 not needed,
+          # but kept for consistency with RetroMi-packages builds)
           export __platform="armv7-mali"
-          export __user="$(whoami)"
 
-          echo "=== Building: ${PACKAGE} (native armhf) ==="
-          sudo -E bash retropie_packages.sh "${PACKAGE}" _source_ \
+          sudo -E bash retropie_packages.sh "${PACKAGE}" \
             2>&1 | tee /tmp/retropie-ci/output/build.log
 
-      - name: Validate and package
+      - name: Validate install
         env:
           PACKAGE: ${{ github.event.inputs.package || 'openbor' }}
         run: |
@@ -76,16 +68,15 @@ jobs:
           du -sh /opt/retropie 2>/dev/null || true
 
           if [ ! -d /opt/retropie ]; then
-            echo "ERROR: /opt/retropie not found — build failed"
+            echo "ERROR: /opt/retropie not found — install failed"
             exit 1
           fi
 
           tar -czf "/tmp/retropie-ci/output/packages-${PACKAGE}-armhf.tar.gz" \
             -C / opt/retropie/
-          echo "Package created:"
           ls -lh /tmp/retropie-ci/output/*.tar.gz
 
-      - name: Cleanup build artifacts
+      - name: Cleanup
         if: always()
         run: |
           sudo rm -rf /opt/retropie
