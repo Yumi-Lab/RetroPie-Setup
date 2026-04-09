@@ -26,13 +26,22 @@ function sources_openbor() {
 }
 
 function build_openbor() {
-    # linux.cmake uses set() (local var) which overrides cmake -D cache flags.
-    # Patch directly to disable OpenGL and WebM for Mali-400 / embedded targets.
-    sed -i \
-        -e 's/set(USE_OPENGL\s*ON)/set(USE_OPENGL OFF)/' \
-        -e 's/set(USE_LOADGL\s*ON)/set(USE_LOADGL OFF)/' \
-        -e 's/set(USE_WEBM\s*ON)/set(USE_WEBM OFF)/' \
-        cmake/linux.cmake
+    # Patch linux.cmake for platforms without desktop OpenGL (Mali-400, GLES-only, etc.)
+    # OpenBOR defaults to OpenGL + WebM which require libGL and libvpx.
+    # On GLES-only platforms (mali, embedded ARM), disable these and use SDL2 rendering.
+    if ! isPlatform "gl"; then
+        sed -i \
+            -e 's/set(USE_OPENGL\s*ON)/set(USE_OPENGL OFF)/' \
+            -e 's/set(USE_LOADGL\s*ON)/set(USE_LOADGL OFF)/' \
+            cmake/linux.cmake
+    fi
+
+    # WebM (libvpx) is optional and not available on all platforms
+    if ! isPlatform "gl" && isPlatform "gles"; then
+        sed -i \
+            -e 's/set(USE_WEBM\s*ON)/set(USE_WEBM OFF)/' \
+            cmake/linux.cmake
+    fi
 
     rm -rf build
     mkdir build
