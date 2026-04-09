@@ -19,9 +19,111 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  # ── Job 1: Docker QEMU armhf — Bookworm + Trixie — serveur USA ──
+  build-qemu:
+    runs-on: yumi-lab
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [bookworm, trixie]
+    name: qemu — ${{ github.event.inputs.package || 'openbor' }} (armhf / ${{ matrix.distro }})
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Ensure QEMU binfmt armhf
+        run: |
+          docker run --privileged --rm tonistiigi/binfmt --install arm
+          docker run --platform linux/arm/v7 --rm debian:${{ matrix.distro }} uname -m
+
+      - name: Build ${{ github.event.inputs.package || 'openbor' }} on Debian ${{ matrix.distro }}
+        env:
+          PACKAGE: ${{ github.event.inputs.package || 'openbor' }}
+          DISTRO: ${{ matrix.distro }}
+        run: |
+          mkdir -p output
+
+          docker run --platform linux/arm/v7 --rm \
+            -e PACKAGE="${PACKAGE}" \
+            -e DISTRO="${DISTRO}" \
+            -v "${{ github.workspace }}:/repo:ro" \
+            -v "${{ github.workspace }}/output:/output" \
+            debian:${DISTRO} /bin/bash -c '
+              set -e
+
+              echo "================================================================"
+              echo " RetroPie-Setup | pkg: ${PACKAGE} | arch: $(uname -m) | distro: ${DISTRO}"
+              echo "================================================================"
+
+              apt-get update -qq
+              apt-get install -y --no-install-recommends \
+                git curl wget ca-certificates sudo dialog \
+                build-essential cmake pkg-config \
+                libsdl2-dev libsdl2-gfx-1.0-0 libsdl2-mixer-2.0-0 \
+                libsdl2-net-2.0-0 libsdl2-ttf-2.0-0 libsdl2-image-2.0-0 \
+                libusb-1.0-0-dev libavformat-dev libavdevice-dev \
+                xmlstarlet joystick python3 lsb-release
+
+              # Trixie (Debian 13) — additional -dev packages if available
+              if [ "${DISTRO}" = "trixie" ]; then
+                apt-get install -y --no-install-recommends \
+                  libsdl2-gfx-dev libsdl2-mixer-dev libsdl2-net-dev \
+                  libsdl2-ttf-dev libsdl2-image-dev 2>/dev/null || true
+              fi
+
+              # RetroPie expects a pi user
+              id -u pi &>/dev/null || useradd -m -s /bin/bash pi
+              echo "pi ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+              # Copy repo (read-only mount)
+              cp -a /repo /home/pi/RetroPie-Setup
+              chown -R pi:pi /home/pi/RetroPie-Setup
+              cd /home/pi/RetroPie-Setup
+
+              # CRITICAL: force platform for QEMU builds
+              # /proc/cpuinfo in QEMU does NOT show "Allwinner sun8i Family"
+              # Without this, RetroPie falls back to -march=native (x86 host instructions)
+              export __platform="armv7-mali"
+
+              echo "=== Building ${PACKAGE} with __platform=${__platform} ==="
+              __user=pi bash retropie_packages.sh "${PACKAGE}" \
+                2>&1 | tee /output/build-${DISTRO}.log
+
+              if [ ! -d /opt/retropie ]; then
+                echo "ERROR: /opt/retropie not found — build failed"
+                exit 1
+              fi
+
+              echo "=== Installed files ==="
+              find /opt/retropie -type f | head -30
+              du -sh /opt/retropie
+
+              tar -czf "/output/packages-${PACKAGE}-armhf-${DISTRO}.tar.gz" \
+                -C / opt/retropie/
+
+              echo "=== Done: ${PACKAGE} on Debian ${DISTRO} ==="
+            '
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ github.event.inputs.package || 'openbor' }}-${{ matrix.distro }}
+          path: output/build-${{ matrix.distro }}.log
+
+      - name: Upload package
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ github.event.inputs.package || 'openbor' }}-armhf-${{ matrix.distro }}
+          path: output/packages-*-armhf-${{ matrix.distro }}.tar.gz
+
+  # ── Job 2: Natif ARM — SmartPi FR (H3 hardware) ──────────────────
+  build-native:
     runs-on: [self-hosted, Linux, ARM, yumi-fr]
-    name: build — ${{ github.event.inputs.package || 'openbor' }} (armhf native)
+    name: native — ${{ github.event.inputs.package || 'openbor' }} (armhf H3)
     timeout-minutes: 120
 
     steps:
@@ -39,7 +141,6 @@ jobs:
           mkdir -p /tmp/retropie-ci/output
           sudo rm -rf /opt/retropie
 
-      # Exact same commands a user would run on a SmartPi
       - name: "User step 1 — git clone"
         run: |
           git clone --depth=1 -b yumi-armhf \
@@ -54,8 +155,7 @@ jobs:
 
           # 100% vanilla — no __platform override.
           # On real H3, /proc/cpuinfo shows "Allwinner sun8i Family"
-          # → get_platform() auto-detects __platform="armv7-mali"
-          # In chroot/QEMU, __platform MUST be forced externally (build-group.sh handles it).
+          # -> get_platform() auto-detects __platform="armv7-mali"
 
           sudo bash retropie_packages.sh "${PACKAGE}" \
             2>&1 | tee /tmp/retropie-ci/output/build.log
@@ -73,7 +173,7 @@ jobs:
             exit 1
           fi
 
-          tar -czf "/tmp/retropie-ci/output/packages-${PACKAGE}-armhf.tar.gz" \
+          tar -czf "/tmp/retropie-ci/output/packages-${PACKAGE}-armhf-native.tar.gz" \
             -C / opt/retropie/
           ls -lh /tmp/retropie-ci/output/*.tar.gz
 
@@ -87,12 +187,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log-${{ github.event.inputs.package || 'openbor' }}
+          name: build-log-${{ github.event.inputs.package || 'openbor' }}-native
           path: /tmp/retropie-ci/output/build.log
 
       - name: Upload package
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: packages-${{ github.event.inputs.package || 'openbor' }}-armhf
+          name: packages-${{ github.event.inputs.package || 'openbor' }}-armhf-native
           path: /tmp/retropie-ci/output/packages-*.tar.gz
