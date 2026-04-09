@@ -20,8 +20,12 @@ concurrency:
 
 jobs:
   build-test:
-    runs-on: [self-hosted, Linux, X64, yumi-lab]
-    name: Build test — ${{ github.event.inputs.package || 'openbor' }} (armhf / Debian Bookworm)
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        debian: [bookworm, trixie]
+    name: Build (${{ matrix.debian }}) — ${{ github.event.inputs.package || 'openbor' }}
 
     steps:
       - name: Checkout yumi-armhf
@@ -34,25 +38,25 @@ jobs:
         with:
           platforms: arm
 
-      - name: Build package in armhf container
+      - name: Build package in debian:${{ matrix.debian }} armhf container
         run: |
           PACKAGE="${{ github.event.inputs.package || 'openbor' }}"
-          echo "Testing package: ${PACKAGE}"
-          mkdir -p /tmp/output-$$
+          DEBIAN="${{ matrix.debian }}"
+          mkdir -p /tmp/output
 
           docker run --rm \
             --platform linux/arm/v7 \
             -v "${{ github.workspace }}:/retropie-setup:ro" \
-            -v "/tmp/output-$$:/output" \
-            debian:bookworm \
-            bash -c "
+            -v "/tmp/output:/output" \
+            "debian:${DEBIAN}" \
+            bash -c '
               set -e
 
-              echo '=== System info ==='
+              echo "=== System info ==="
               uname -m
-              cat /etc/os-release | grep PRETTY_NAME
+              grep PRETTY_NAME /etc/os-release
 
-              echo '=== Installing build dependencies ==='
+              echo "=== Installing build dependencies ==="
               apt-get update -qq
               apt-get install -y --no-install-recommends \
                 git curl wget ca-certificates sudo dialog \
@@ -60,46 +64,36 @@ jobs:
                 libsdl2-dev libogg-dev libvorbis-dev libpng-dev zlib1g-dev \
                 xmlstarlet python3 2>&1 | tail -5
 
-              echo '=== Creating pi user ==='
               id -u pi &>/dev/null || useradd -m -s /bin/bash pi
-              echo 'pi ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+              echo "pi ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-              echo '=== Copying RetroPie-Setup (yumi-armhf) ==='
               cp -r /retropie-setup /home/pi/RetroPie-Setup
               chown -R pi:pi /home/pi/RetroPie-Setup
 
-              export __platform='armv7-mali'
-              export __user='pi'
+              export __platform="armv7-mali"
+              export __user="pi"
 
               cd /home/pi/RetroPie-Setup
+              bash retropie_packages.sh "'"${PACKAGE}"'" 2>&1 | tee "/output/build-'"${DEBIAN}"'.log"
 
-              echo '=== Building: ${PACKAGE} ==='
-              bash retropie_packages.sh '${PACKAGE}' 2>&1 | tee /output/build.log
-
-              echo '=== Result ==='
-              find /opt/retropie -type f | head -30
+              echo "=== Installed files ==="
+              find /opt/retropie -type f | head -20
               du -sh /opt/retropie || true
 
-              tar -czf /output/packages-${PACKAGE}-armhf.tar.gz -C / opt/retropie/ 2>/dev/null || true
+              tar -czf "/output/packages-'"${PACKAGE}"'-'"${DEBIAN}"'-armhf.tar.gz" -C / opt/retropie/ 2>/dev/null || true
               ls -lh /output/
-            "
-
-          echo "OUTPUT_DIR=/tmp/output-$$" >> $GITHUB_ENV
+            '
 
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log-${{ github.event.inputs.package || 'openbor' }}
-          path: ${{ env.OUTPUT_DIR }}/build.log
+          name: build-log-${{ matrix.debian }}-${{ github.event.inputs.package || 'openbor' }}
+          path: /tmp/output/build-${{ matrix.debian }}.log
 
       - name: Upload package artifact
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: packages-${{ github.event.inputs.package || 'openbor' }}-armhf.tar.gz
-          path: ${{ env.OUTPUT_DIR }}/packages-${{ github.event.inputs.package || 'openbor' }}-armhf.tar.gz
-
-      - name: Cleanup
-        if: always()
-        run: rm -rf ${{ env.OUTPUT_DIR }}
+          name: packages-${{ github.event.inputs.package || 'openbor' }}-${{ matrix.debian }}-armhf
+          path: /tmp/output/packages-${{ github.event.inputs.package || 'openbor' }}-${{ matrix.debian }}-armhf.tar.gz
