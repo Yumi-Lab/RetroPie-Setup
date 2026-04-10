@@ -6,7 +6,7 @@ DOWNLOAD_URL_CHECKSUM="https://github.com/Yumi-Lab/SmartPi-armbian/releases/down
 DOWNLOAD_URL_IMAGE="https://github.com/Yumi-Lab/SmartPi-armbian/releases/download/v1.6.0/Yumi-smartpi1-bookworm-debian12-server-2026-03-01-2139.img.xz"
 
 # Extra space needed: RetroPie full basic_install from source
-BASE_IMAGE_ENLARGEROOT=12000
+BASE_IMAGE_ENLARGEROOT=6000
 
 # SmartPi One — AllWinner H3 — ARMv7 32-bit
 BASE_ARCH="armhf"

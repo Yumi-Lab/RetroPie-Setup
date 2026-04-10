@@ -47,10 +47,12 @@ jobs:
 
   build:
     needs: setup
-    runs-on: ${{ contains(matrix.config, 'trixie') && 'yumi-lab' || fromJSON('["self-hosted","Linux","ARM","yumi-fr"]') }}
+    # Both builds on USA server — SmartPi FR has only 14G disk, not enough for CustomPiOS build
+    runs-on: yumi-lab
     timeout-minutes: 14400
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         config: ${{ fromJson(needs.setup.outputs.matrix) }}
     steps:
