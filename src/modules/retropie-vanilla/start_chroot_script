@@ -18,9 +18,12 @@ apt-get update
 check_install_pkgs ${RETROPIE_VANILLA_DEPS}
 
 # Clone RetroPie-Setup into the chroot
-pushd "/home/${BASE_USER}" &>/dev/null || exit 1
-gitclone RETROPIE_SETUP_REPO RetroPie-Setup
-popd &>/dev/null || exit 1
+# Using explicit git clone instead of gitclone helper — the config variables
+# may not be exported into the chroot environment by CustomPiOS
+git clone --depth=1 -b "${RETROPIE_SETUP_REPO_BRANCH}" \
+    "${RETROPIE_SETUP_REPO_SHIP}" \
+    "/home/${BASE_USER}/RetroPie-Setup"
+chown -R "${BASE_USER}:${BASE_USER}" "/home/${BASE_USER}/RetroPie-Setup"
 
 cd "/home/${BASE_USER}/RetroPie-Setup"
 
