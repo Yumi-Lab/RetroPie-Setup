@@ -1,0 +1,81 @@
+name: CI — install.sh simulation
+
+on:
+  push:
+    branches:
+      - yumi-armhf
+  pull_request:
+    branches:
+      - yumi-armhf
+  workflow_dispatch:
+
+concurrency:
+  group: ci-yumi-armhf-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install-simulation:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        debian: [bookworm, trixie]
+    name: install.sh — debian:${{ matrix.debian }}
+
+    steps:
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm
+
+      - name: Simulate install.sh on debian:${{ matrix.debian }} (armhf)
+        run: |
+          DEBIAN="${{ matrix.debian }}"
+          mkdir -p /tmp/output
+
+          docker run --rm \
+            --platform linux/arm/v7 \
+            -v "/tmp/output:/output" \
+            "debian:${DEBIAN}" \
+            bash -c '
+              set -e
+
+              echo "=== System info ==="
+              uname -m
+              grep PRETTY_NAME /etc/os-release
+
+              echo "=== Installing bootstrap dependencies ==="
+              apt-get update -qq
+              apt-get install -y --no-install-recommends curl ca-certificates sudo
+
+              echo "=== Running YUMI-RETROPIE install.sh ==="
+              curl -fsSL https://raw.githubusercontent.com/Yumi-Lab/YUMI-RETROPIE/main/install.sh | bash 2>&1 | tee /output/install-'"${DEBIAN}"'.log
+
+              echo "=== Validation ==="
+              echo "--- EmulationStation binary ---"
+              ls -lh /opt/retropie/supplementary/emulationstation/emulationstation || echo "MISSING"
+
+              echo "--- RetroArch binary ---"
+              ls -lh /opt/retropie/emulators/retroarch/bin/retroarch || echo "MISSING"
+
+              echo "--- libretro cores count ---"
+              find /opt/retropie/libretrocores -name "*.so" 2>/dev/null | wc -l
+
+              echo "--- ROM directories ---"
+              ls /home/pi/RetroPie/roms/ | head -20
+
+              echo "--- es_systems.cfg ---"
+              [ -f /etc/emulationstation/es_systems.cfg ] && echo "OK" || echo "MISSING"
+
+              echo "--- OpenBOR ---"
+              ls /opt/retropie/ports/openbor/ 2>/dev/null || echo "not installed"
+
+              echo "=== Done ==="
+            ' 2>&1 | tee /tmp/output/run-${DEBIAN}.log || true
+
+      - name: Upload install log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-log-${{ matrix.debian }}
+          path: /tmp/output/install-${{ matrix.debian }}.log
