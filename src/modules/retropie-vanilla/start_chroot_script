@@ -12,14 +12,18 @@ install_cleanup_trap
 
 echo_green "Installing RetroPie vanilla (basic_install from source)..."
 
+# Defaults — CustomPiOS does NOT export config vars into the chroot
+[ -n "${RETROPIE_SETUP_REPO_SHIP}" ]   || RETROPIE_SETUP_REPO_SHIP="https://github.com/Yumi-Lab/RetroPie-Setup.git"
+[ -n "${RETROPIE_SETUP_REPO_BRANCH}" ] || RETROPIE_SETUP_REPO_BRANCH="yumi-armhf"
+[ -n "${RETROPIE_VANILLA_DEPS}" ]      || RETROPIE_VANILLA_DEPS="git dialog wget lsb-release build-essential cmake pkg-config libsdl2-dev libusb-1.0-0-dev libavformat-dev libavdevice-dev xmlstarlet joystick python3"
+
 # Build dependencies
 apt-get update
 # shellcheck disable=SC2086
 check_install_pkgs ${RETROPIE_VANILLA_DEPS}
 
 # Clone RetroPie-Setup into the chroot
-# Using explicit git clone instead of gitclone helper — the config variables
-# may not be exported into the chroot environment by CustomPiOS
+echo_green "Cloning ${RETROPIE_SETUP_REPO_SHIP} (branch: ${RETROPIE_SETUP_REPO_BRANCH})..."
 git clone --depth=1 -b "${RETROPIE_SETUP_REPO_BRANCH}" \
     "${RETROPIE_SETUP_REPO_SHIP}" \
     "/home/${BASE_USER}/RetroPie-Setup"
@@ -27,10 +31,22 @@ chown -R "${BASE_USER}:${BASE_USER}" "/home/${BASE_USER}/RetroPie-Setup"
 
 cd "/home/${BASE_USER}/RetroPie-Setup"
 
-# CRITICAL: force platform for QEMU builds
-# /proc/cpuinfo in QEMU does NOT show "Allwinner sun8i Family"
-# Without this, RetroPie falls back to -march=native (x86 host instructions)
-export __platform="armv7-mali"
+# Platform detection — RetroPie reads /proc/cpuinfo "Hardware:" to pick __platform.
+# On real H3 this shows "Allwinner sun8i Family" → armv7-mali (correct).
+# Under QEMU chroot the host CPU leaks through → falls back to x86 -march=native.
+# We detect QEMU (uname shows armv7l but /proc/cpuinfo has no Allwinner) and force.
+if grep -q "Allwinner sun8i" /proc/cpuinfo 2>/dev/null; then
+    echo_green "Native H3 detected — RetroPie will auto-detect armv7-mali"
+elif [[ "$(uname -m)" == armv7* ]]; then
+    export __platform="armv7-mali"
+    echo_green "QEMU armhf chroot detected — forcing __platform=${__platform}"
+elif [[ "$(uname -m)" == aarch64 ]]; then
+    export __platform="aarch64"
+    echo_green "QEMU arm64 chroot detected — forcing __platform=${__platform}"
+else
+    echo_green "WARNING: unexpected arch $(uname -m) — forcing armv7-mali as fallback"
+    export __platform="armv7-mali"
+fi
 
 # Force RetroPie-Setup to use the target user
 export __user="${BASE_USER}"
