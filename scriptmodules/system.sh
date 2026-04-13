@@ -685,9 +685,10 @@ function platform_native() {
 function platform_armv7-mali() {
     cpu_armv7
     __platform_flags+=(mali gles)
-    # Detect Lima/Panfrost (open-source Mali KMS drivers on Armbian/mainline)
-    # When present, use KMS/EGL instead of legacy Mali fbdev
-    if [[ -d "/sys/module/lima" ]] || [[ -d "/sys/module/panfrost" ]]; then
+    # Detect whether to use legacy Mali fbdev or modern KMS/Mesa (Lima/Panfrost).
+    # If mali-fbdev package is not available, we're on Mesa/Lima/Panfrost → use KMS/EGL.
+    # This works on real hardware (Armbian), in QEMU chroot, and in Docker — no /sys needed.
+    if ! apt-cache show mali-fbdev &>/dev/null; then
         __platform_flags+=(kms mesa)
     fi
 }

@@ -81,6 +81,11 @@ function build_sdl2() {
 
     cd "$(get_pkg_ver_sdl2)"
 
+    # Fix Bookworm package names in upstream debian/control (RetroPie/SDL repo)
+    # fcitx-libs-dev is gone on Bookworm, libgl1-mesa-dev → libgl-dev
+    sed -i 's/fcitx-libs-dev//' ./debian/control
+    sed -i 's/libgl1-mesa-dev/libgl-dev/g' ./debian/control
+
     if isPlatform "vero4k"; then
         # remove harmful (mesa) and un-needed (X11) dependencies from debian package control
         sed -i '/^\s*lib.*x\|mesa/ d' ./debian/control
