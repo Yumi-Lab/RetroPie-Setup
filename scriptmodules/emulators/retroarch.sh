@@ -18,7 +18,7 @@ rp_module_section="core"
 function depends_retroarch() {
     local depends=(libudev-dev libxkbcommon-dev libsdl2-dev libasound2-dev libusb-1.0-0-dev)
     isPlatform "dispmanx" && depends+=(libraspberrypi-dev)
-    isPlatform "gles" && ! isPlatform "vero4k" && depends+=(libgles2-mesa-dev)
+    isPlatform "gles" && ! isPlatform "vero4k" && depends+=(libgles-dev)
     isPlatform "mesa" && depends+=(libx11-xcb-dev)
     isPlatform "mali" && ! isPlatform "kms" && depends+=(mali-fbdev)
     isPlatform "x11" && depends+=(libx11-xcb-dev libpulse-dev)
