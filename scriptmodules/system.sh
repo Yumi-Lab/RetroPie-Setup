@@ -685,6 +685,11 @@ function platform_native() {
 function platform_armv7-mali() {
     cpu_armv7
     __platform_flags+=(mali gles)
+    # Detect Lima/Panfrost (open-source Mali KMS drivers on Armbian/mainline)
+    # When present, use KMS/EGL instead of legacy Mali fbdev
+    if [[ -d "/sys/module/lima" ]] || [[ -d "/sys/module/panfrost" ]]; then
+        __platform_flags+=(kms mesa)
+    fi
 }
 
 function platform_imx6() {

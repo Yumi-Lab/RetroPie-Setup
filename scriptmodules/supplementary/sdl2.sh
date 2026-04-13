@@ -57,7 +57,7 @@ function depends_sdl2() {
     # install additional packages that are needed, but may be unsuitable as debian package dependencies due to distribution oddities
     local depends=(devscripts debhelper dh-autoreconf)
 
-    isPlatform "mali" && depends+=(mali-fbdev)
+    isPlatform "mali" && ! isPlatform "kms" && depends+=(mali-fbdev)
     isPlatform "dispmanx" && depends+=(libraspberrypi-dev)
     isPlatform "vero4k" && depends+=(vero3-userland-dev-osmc)
 
@@ -87,7 +87,7 @@ function build_sdl2() {
         conf_flags+=("--disable-video-x11")
     fi
     isPlatform "vulkan" && conf_flags+=("--enable-video-vulkan") || conf_flags+=("--disable-video-vulkan")
-    isPlatform "mali" && conf_flags+=("--enable-video-mali" "--disable-video-opengl")
+    isPlatform "mali" && ! isPlatform "kms" && conf_flags+=("--enable-video-mali" "--disable-video-opengl")
     isPlatform "dispmanx" && conf_flags+=("--enable-video-rpi") || conf_flags+=("--disable-video-rpi")
     isPlatform "kms" || isPlatform "rpi" && conf_flags+=("--enable-video-kmsdrm")
 
